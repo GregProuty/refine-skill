@@ -40,3 +40,7 @@ Options: `--rounds N` (round cap), `--effort high|medium|low` (round 1 effort; d
 ```bash
 python3 -m unittest discover -s tests -t .
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
