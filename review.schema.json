@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "findings", "prior", "verified", "not_verified"],
+  "properties": {
+    "verdict": {"type": "string", "enum": ["changes requested", "ready with P2s", "ready"]},
+    "findings": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["severity", "title", "claim", "evidence", "why", "fix"],
+      "properties": {
+        "severity": {"type": "string", "enum": ["P0", "P1", "P2", "P3"]},
+        "title": {"type": "string"}, "claim": {"type": "string"},
+        "evidence": {"type": "string"}, "why": {"type": "string"}, "fix": {"type": "string"}
+      }}},
+    "prior": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "result", "note"],
+      "properties": {
+        "id": {"type": "string"},
+        "result": {"type": "string", "enum": ["resolved", "withdrawn", "still open"]},
+        "note": {"type": "string"}
+      }}},
+    "verified": {"type": "array", "items": {"type": "string"}},
+    "not_verified": {"type": "array", "items": {"type": "string"}}
+  }
+}

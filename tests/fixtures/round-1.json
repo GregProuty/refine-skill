@@ -1,0 +1,110 @@
+{
+ "verdict": "changes requested",
+ "findings": [
+  {
+   "severity": "P0",
+   "title": "A confirm pass can bypass the round cap permanently",
+   "claim": "Termination is first-match-wins, with CONVERGED evaluated before CAP; therefore convergence at round 10 with `--confirm` starts round 11 despite rounds being defined as `1 \u2026 cap`, and if that confirm pass raises a P0/P1, later rounds can never satisfy `N = --rounds` because N is already greater than 10",
+   "evidence": "spec L233\u2013L234, L287\u2013L295",
+   "why": "this violates the fixed ten-round cap and creates a non-terminating path",
+   "fix": "make CAP use `N >= --rounds`, define confirm as consuming one of the capped rounds, and schedule it only when `N < --rounds`."
+  },
+  {
+   "severity": "P0",
+   "title": "Resume has no authoritative checkpoint for a half-finished round",
+   "claim": "`--resume` says to enter at the next round, while an interrupted Codex call is supposed to rerun the same round; between prompt creation, Codex output, meta creation, response, fixes, verification, and commit, many combinations such as `round-N.md` without `round-N.meta` or `response-N.md` are possible, but no rule identifies the completed phase or whether existing output is safe to reuse",
+   "evidence": "spec L64\u2013L65, L235\u2013L283, L299\u2013L301",
+   "why": "a fresh Claude session can skip an uncommitted response/fix, overwrite a valid result, or start N+1 from an uncommitted N, so the promised lossless resume is not implementable",
+   "fix": "define an atomic per-round phase journal and a resume matrix; derive N from the last completed committed round, rerun the same N after an incomplete Codex phase with a freshly truncated output file, and otherwise resume the exact unfinished parse/respond/verify/commit phase."
+  },
+  {
+   "severity": "P0",
+   "title": "The final ledger state cannot name the single commit that contains it",
+   "claim": "An accepted finding must become `fixed@<hash>` before the round commit, but that commit\u2019s hash cannot be known until after its contents\u2014including `ledger.md`\u2014are committed; writing the hash afterward leaves the source-of-truth ledger uncommitted or requires a second commit, while amending changes the hash again. The ruling flow has the same contradiction, and `exchange.md` is regenerated only after the purported one round commit",
+   "evidence": "spec L90\u2013L99, L197\u2013L198, L272\u2013L283, L293",
+   "why": "the committed checkpoint cannot contain the state the next round and `--resume` are told to trust",
+   "fix": "replace the self-referential status with `fixed` plus a round number whose commit is located from round metadata/history, and regenerate `exchange.md` before the single commit; alternatively explicitly adopt a separate state commit and revise the one-commit rule."
+  },
+  {
+   "severity": "P1",
+   "title": "Delta prompts omit context needed to verify prose fixes",
+   "claim": "A fresh Codex session receives only reusable policy sections, a compact ledger, the diff, and Claude\u2019s response; it does not receive the original finding body, the subject-identification section, or a current reading manifest, even though the cost model says delta rounds read \u201cthe manifest ranges a fix touched.\u201d For a prose subject, diff hunks alone do not provide enough surrounding invariants to check whether the revised wording contradicts an unchanged section",
+   "evidence": "spec L113\u2013L133, L235\u2013L247, L277\u2013L278, L327\u2013L331",
+   "why": "two implementations can produce materially different prompt context, and Codex may confirm a local edit without validating its document-level consequence",
+   "fix": "include the verbatim awaited finding blocks, current subject path and revision, and generated current ranges covering each entire changed semantic section plus cited dependency sections; add explicit template markers for mechanically extracting reusable sections."
+  },
+  {
+   "severity": "P1",
+   "title": "The parser contract does not define a closed grammar",
+   "claim": "Only a missing `Verdict` or missing awaited ID is declared a format violation, while behavior is unspecified for duplicate or unknown IDs, multiple/invalid verdicts, malformed finding headings, invalid prior-result words, or incompatible transitions such as `withdrawn` for a `fixed@` row and `resolved` for a `rejected` row",
+   "evidence": "spec L150\u2013L176, L192\u2013L207, L263\u2013L271",
+   "why": "an unattended parser can update the ledger differently depending on implementation or silently strand a P0/P1 in an unhandled state",
+   "fix": "define the complete accepted grammar and transition matrix, require exactly one valid result for every awaited ID, reject unknown/duplicate IDs and invalid status combinations, and exercise each case in parser fixtures."
+  },
+  {
+   "severity": "P1",
+   "title": "Explicit `git add` paths do not isolate round commits",
+   "claim": "The spec acknowledges unrelated working-tree changes but only forbids `git add -A`; `git commit` still includes unrelated entries already staged before `/refine`, and adding a subject path stages pre-existing unrelated edits within that path. For impl subjects, the argument is a diff range, so \u201csubject paths\u201d is itself undefined when fixes add new files",
+   "evidence": "spec L51\u2013L55, L98\u2013L100, L244\u2013L246",
+   "why": "a round can sweep user work into an autonomous commit or omit an accepted fix outside the original file list",
+   "fix": "snapshot index/worktree state at setup, require a clean index, reject overlap with pre-existing dirty paths, track every path modified by the loop, and commit only that exact allowlist with Git\u2019s path-limited commit form."
+  },
+  {
+   "severity": "P1",
+   "title": "Error and metadata detection rely on an untyped transcript",
+   "claim": "The failure rule greps a combined stdout/stderr transcript for any line beginning `ERROR:`, so prompt content or command output quoting such a line can produce a false CODEX FAILURE. The claimed token \u201cfooter\u201d is not actually at EOF in the prototype: `tokens used` appears before a second copy of the final response",
+   "evidence": "spec L253\u2013L262; `.codex-help.txt` L102\u2013L106; `.codex-round-1.log` L12860\u2013L12864 and L12910\u2013L12914",
+   "why": "unattended control flow and accounting cannot safely depend on arbitrary review text",
+   "fix": "remove stale output before every attempt, use process status plus output freshness for success, and parse a validated structured event stream or otherwise separate machine-status records from transcript text."
+  },
+  {
+   "severity": "P1",
+   "title": "`--effort low` has no defined delta effort",
+   "claim": "The CLI accepts `high|medium|low`, but delta rounds are merely \u201cone step lower\u201d; there is no tier below `low`",
+   "evidence": "spec L41\u2013L42, L61\u2013L63, L258",
+   "why": "implementations must either reject a documented invocation or choose different behavior",
+   "fix": "define the mapping explicitly, for example `high \u2192 medium`, `medium \u2192 low`, and `low \u2192 low`."
+  },
+  {
+   "severity": "P1",
+   "title": "An accepted user ruling can contest the same ID repeatedly",
+   "claim": "A `still open` report increments cycles to two and contests an ID, but accepting the user ruling resets cycles to zero; two more incomplete-fix reports contest the same ID again, and repeated accepts can repeat this at rounds 3, 5, 7, and 9",
+   "evidence": "spec L211\u2013L217, L293",
+   "why": "the cycle limit does not provide the stated lifetime bound and the autonomous loop can repeatedly stop for rulings on one ID",
+   "fix": "define cycles as lifetime counters that do not reset, or close the ruled ID and create a separately bounded fix-verification ID with explicit post-ruling behavior."
+  },
+  {
+   "severity": "P2",
+   "title": "The confirm pass has no prior-decision context",
+   "claim": "A confirm pass is \u201cround-1-shaped,\u201d so it receives `brief.md` verbatim rather than the ledger or prior responses and may reintroduce a rejected, withdrawn, or user-closed issue as a new finding with a new ID",
+   "evidence": "spec L163\u2013L166, L235\u2013L247, L294",
+   "why": "optional confirmation can create duplicate rows and unnecessary contested stops instead of testing the final revision",
+   "fix": "retain the full-review scope but append a prior-decisions appendix and require genuinely new evidence before assigning a new ID to a previously decided issue."
+  },
+  {
+   "severity": "P2",
+   "title": "The cited out-of-credits fixture is not the supplied artifact",
+   "claim": "The testing section describes the real round-2 log tail as an out-of-credits error with empty output, but the available log contains a token count followed by a completed review, and its actual final five lines are the review\u2019s `Not verified` section",
+   "evidence": "spec L341\u2013L343; `.codex-round-2.log` L9156\u2013L9163 and L9206\u2013L9210",
+   "why": "the promised real regression fixture cannot be constructed from the named artifact, weakening verification of the most important failure path",
+   "fix": "preserve an immutable minimal log/output pair from the actual failure or explicitly make this a synthetic fixture and specify the expected exit status and file state."
+  }
+ ],
+ "prior": [],
+ "verified": [
+  "The installed CLI supports `codex exec -o`, `-C`, `-s read-only`, a stdin prompt via `-`, and generic TOML config overrides via `-c`: `.codex-help.txt` L3\u2013L25, L53\u2013L70, L105\u2013L106.",
+  "`codex exec resume <session_id> -` and `-o` on resume are valid forms: `.codex-help.txt` L117\u2013L125, L190\u2013L191.",
+  "The prototype successfully used the proposed initial invocation shape, and its header exposes workdir, model, sandbox, effort, and `session id:`: `run-round.sh` L34\u2013L40; `.codex-round-1.log` L1\u2013L10.",
+  "The prototype output matches the parser baseline of 2 P0, 8 P1, and 1 P2: `codex-round-1.md` L5\u2013L36.",
+  "The exact Git exclusion pathspec in spec L53\u2013L55 is accepted by Git in this worktree.",
+  "Normal convergence does not treat `fixed@` or `rejected` P0/P1 rows as closed; they remain awaited until `resolved` or `withdrawn`, and CONVERGED requires a terminal state: spec L197\u2013L207, L294.",
+  "The reading-manifest instruction is actionable: this review used the supplied ranges without directory exploration; the escape for evidence needed by a finding is explicit at spec L117\u2013L122.",
+  "The prototype\u2019s measured token count supports the approximate 200k round-1 statement: `.codex-round-1.log` L12860\u2013L12861. Section 10 correctly labels the delta figures as estimates: spec L327\u2013L333."
+ ],
+ "not_verified": [
+  "The claimed eight-minute prototype duration and 40\u201380k-token/2\u20134-minute delta estimates could not be verified: the prototype runner does not record duration (`run-round.sh` L33\u2013L41), and no successful measured delta metadata was supplied.",
+  "Whether `medium` and `low` are accepted values for `model_reasoning_effort` is not enumerated by the help capture; only the generic `-c` mechanism and the prototype\u2019s successful `high` value were evidenced.",
+  "The future templates and scripts do not yet exist, so reusable-section extraction, atomic writes, parser behavior, and dry-run fixture behavior could not be executed.",
+  "Per the manifest, the full ~800KB logs were not read; only the requested header/footer ranges and targeted lines required to investigate the failure-detection claims were inspected."
+ ]
+}
